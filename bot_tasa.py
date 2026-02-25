@@ -1,6 +1,7 @@
 import requests
 import time
 import telebot
+from datetime import datetime, timedelta
 
 # --- CONFIGURACIÓN ---
 TOKEN_TELEGRAM = "7933470868:AAE2vYm73cJLTcxMlLDzdVS7oE5Pe2g7xJs"
@@ -85,7 +86,7 @@ def ejecutar_monitoreo():
             f"⚖️ *BRECHA:* {brecha:.2f}%\n"
             f"📈 *VARIACIÓN:* {cambio_str}\n"
             f"--- \n"
-            f"🕒 {time.strftime('%d/%m/%Y %I:%M %p')}"
+            f"🕒 {(datetime.utcnow() - timedelta(hours=4)).strftime('%d/%m/%Y %I:%M %p')}"
         )
         
         bot.send_message(ID_CANAL, mensaje, parse_mode="Markdown")
