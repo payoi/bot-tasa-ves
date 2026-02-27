@@ -140,6 +140,15 @@ def calcular_tendencia(actual, anterior):
 def hora_venezuela():
     """Retorna la hora actual de Venezuela"""
     return (datetime.utcnow() - timedelta(hours=4)).strftime('%d/%m/%Y • %I:%M %p')
+def esta_en_horario():
+    """Verifica si estamos en horario de publicación (7:31 AM - 9:02 PM Venezuela)"""
+    ahora = datetime.utcnow() - timedelta(hours=4)
+    hora_actual = ahora.hour * 100 + ahora.minute  # Formato HHMM
+    
+    inicio = 731   # 7:31 AM
+    fin = 2102     # 9:02 PM
+    
+    return inicio <= hora_actual <= fin
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -209,7 +218,19 @@ def formato_p2p(compra, venta, bcv_dolar, tendencia_compra):
 # ═══════════════════════════════════════════════════════════════════════════════
 # FUNCIONES DE MONITOREO
 # ═══════════════════════════════════════════════════════════════════════════════
-
+def monitorear_bcv():
+    """Monitorea y publica SOLO cuando BCV actualiza"""
+    global last_bcv_dolar, last_bcv_euro
+    
+    # Verificar horario (7:31 AM - 9:02 PM Venezuela)
+    if not esta_en_horario():
+        hora_vzla = (datetime.utcnow() - timedelta(hours=4)).strftime('%I:%M %p')
+        print(f"⏰ Fuera de horario ({hora_vzla}) - No se monitorea BCV")
+        return
+    
+    dolar, euro = get_bcv_prices()
+    
+    # ... resto del código igual
 def monitorear_bcv():
     """Monitorea y publica SOLO cuando BCV actualiza"""
     global last_bcv_dolar, last_bcv_euro
@@ -249,8 +270,14 @@ def monitorear_bcv():
 
 
 def monitorear_p2p():
-    """Monitorea P2P cada 30 minutos"""
+    """Monitorea P2P - Solo publica si hay cambio significativo y en horario"""
     global last_price, last_bcv_dolar
+    
+    # Verificar horario (7:31 AM - 9:02 PM Venezuela)
+    if not esta_en_horario():
+        hora_vzla = (datetime.utcnow() - timedelta(hours=4)).strftime('%I:%M %p')
+        print(f"⏰ Fuera de horario ({hora_vzla}) - No se publica P2P")
+        return
     
     print(f"\n{'─'*50}")
     print("📊 Consultando datos P2P...")
@@ -261,18 +288,47 @@ def monitorear_p2p():
     bcv_dolar, _ = get_bcv_prices()
     
     if compra and venta and bcv_dolar:
-        tendencia_compra = calcular_tendencia(compra, last_price)
+        # Verificar si hay cambio significativo
+        publicar = False
         
-        mensaje = formato_p2p(compra, venta, bcv_dolar, tendencia_compra)
+        if last_price is None:
+            # Primera ejecución
+            publicar = True
+            print("🆕 Primera lectura P2P")
+        else:
+            # Calcular diferencia
+            diff_bs = abs(compra - last_price)
+            diff_porcentaje = abs((compra - last_price) / last_price) * 100
+            
+            print(f"   📊 Diferencia: {diff_bs:.2f} Bs ({diff_porcentaje:.2f}%)")
+            
+            # Publicar si cambió más de 1.5% O más de 5 Bs
+            if diff_porcentaje >= 1.5:
+                publicar = True
+                print(f"   🔔 Cambio significativo: {diff_porcentaje:.2f}% (>1.5%)")
+            elif diff_bs >= 5:
+                publicar = True
+                print(f"   🔔 Cambio significativo: {diff_bs:.2f} Bs (>5 Bs)")
+            else:
+                print(f"   ⏳ Sin cambio significativo - No se publica")
         
-        try:
-            bot.send_message(ID_CANAL, mensaje, parse_mode="Markdown")
-            print(f"✅ P2P publicado | Compra: {compra:.2f} Bs")
-            last_price = compra
-            if last_bcv_dolar is None:
-                last_bcv_dolar = bcv_dolar
-        except Exception as e:
-            print(f"❌ Error publicando P2P: {e}")
+        if publicar:
+            tendencia_compra = calcular_tendencia(compra, last_price)
+            
+            mensaje = formato_p2p(compra, venta, bcv_dolar, tendencia_compra)
+            
+            try:
+                bot.send_message(ID_CANAL, mensaje, parse_mode="Markdown")
+                print(f"✅ P2P publicado | Compra: {compra:.2f} Bs")
+                last_price = compra
+                if last_bcv_dolar is None:
+                    last_bcv_dolar = bcv_dolar
+            except Exception as e:
+                print(f"❌ Error publicando P2P: {e}")
+        else:
+            # Actualizar last_price aunque no publiquemos (para tracking)
+            # NO actualizamos para que la próxima comparación sea contra el último publicado
+            pass
     else:
         print("❌ Error obteniendo datos P2P")
     
